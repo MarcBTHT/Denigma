@@ -1,8 +1,13 @@
-# React + Vite
+## Installation
+- Install yarn via npm: npm install --global yarn
+- Create a new Vite project: yarn create vite my-project cd my-project
+- Install dependencies: yarn
+- npm install ethers@5.7.2
+- yarn add react-router-dom
+- Run the project: yarn run dev
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Deploy your contract
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Add to the terminal the variables : source .env
+- forge script script/Token.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
+- forge script script/Token.s.sol --rpc-url $SEPOLIA_RPC_URL --private-key $SEPOLIA_PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
