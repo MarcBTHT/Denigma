@@ -41,9 +41,11 @@ contract dNFT is ERC721, ERC721URIStorage, Ownable {
 
     uint256 private _nextTokenId;
     uint256 private s_buyNumber = 0;
+    uint256 private s_randomNumber = 4; //!!!!Temporary random number!!!!//
     string private constant s_bonus = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjAwIDIwMCIgd2lkdGg9IjQwMCIgIGhlaWdodD0iNDAwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijc4IiBmaWxsPSJyZ2IoMjMxLDIzMiwyMDkpIiAvPgo8L3N2Zz4gCg==";
     string private constant s_malus = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjAwIDIwMCIgd2lkdGg9IjQwMCIgIGhlaWdodD0iNDAwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijc4IiBmaWxsPSJyZ2IoMTg0LDgwLDY2KSIgLz4KPC9zdmc+IA==";
     mapping(uint256 => uint256) public prices; // Mapping from token ID to the desired selling price
+    mapping(uint256 => uint256) private fundsByTokenId; // Tracks funds for each token
 
     event UpdatePrice(uint256 _tokenId, uint256 _price);
     event RemoveFromSale(uint256 _tokenId);
@@ -84,6 +86,9 @@ contract dNFT is ERC721, ERC721URIStorage, Ownable {
         }
         s_buyNumber++;
         delete prices[tokenId];
+        if (s_buyNumber == s_randomNumber) {
+            releaseFunds(to, tokenId); // Release funds to the new owner before transfer
+        }
         return super.transferFrom(from,to,tokenId);
     }
     
@@ -96,17 +101,16 @@ contract dNFT is ERC721, ERC721URIStorage, Ownable {
         approve(address(this), _tokenId); //Approve the contract address to transfer this token
         emit UpdatePrice(_tokenId, _price);
     }
-    
     function removeTokenSale(uint256 _tokenId)
         external
         virtual
         onlyTokenOwner(_tokenId)
     {
         delete prices[_tokenId];
-        approve(address(0), _tokenId); //revok the approval of the contract address (Because when no approval we have 0x0)
+        approve(address(0), _tokenId); //revoke the approval of the contract address (Because when no approval we have 0x0)
         emit RemoveFromSale(_tokenId);
     }
-    function buyToken(uint256 _tokenId) public payable virtual { //Payable permet à la fonction de recevoir des fonds
+    function buyToken(uint256 _tokenId) public payable virtual { //Payable allows the function to receive ETH, is automatically added to the balance of the contract
         if (prices[_tokenId] == 0) {
             revert dNFT__TokenNotForSale();
         }
@@ -115,13 +119,29 @@ contract dNFT is ERC721, ERC721URIStorage, Ownable {
         }
         address seller = ownerOf(_tokenId);
         address buyer = msg.sender;
+        // Calculate the split
+        uint256 sellerShare = msg.value / 10; // 10% to the seller
+        uint256 contractShare = msg.value - sellerShare; // 90% to the contract
 
-        emit Purchase(buyer, seller, msg.value);
-        IERC721(address(this)).transferFrom(seller, buyer, _tokenId); //To make the contract call the function
-        (bool success, ) = payable(seller).call{value: msg.value}("");
+        (bool success, ) = payable(seller).call{value: sellerShare}("");
         if (!success) {
             revert dNFT__TransferFailed();
         }
+        fundsByTokenId[_tokenId] += contractShare;
+        emit Purchase(buyer, seller, msg.value);
+
+        IERC721(address(this)).transferFrom(seller, buyer, _tokenId); //To make the contract call the function
+    }
+    function releaseFunds(address buyer, uint256 _tokenId) public {
+        uint256 amount = fundsByTokenId[_tokenId];
+        if (amount == 0) {
+            revert dNFT__NotEnoughFunds();
+        }
+        (bool success, ) = payable(buyer).call{value: amount}("");
+        if (!success) {
+            revert dNFT__TransferFailed();
+        }
+        fundsByTokenId[_tokenId] = 0; // Reset the stored funds
     }
 
     //////////////////
@@ -177,5 +197,8 @@ contract dNFT is ERC721, ERC721URIStorage, Ownable {
     }
     function getPrice(uint256 _tokenId) external view returns (uint256) {
         return prices[_tokenId];
+    }
+    function getFundsByTokenId(uint256 _tokenId) external view returns (uint256) {
+        return fundsByTokenId[_tokenId];
     }
 }

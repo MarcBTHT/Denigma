@@ -76,6 +76,15 @@ contract TokenTest is Test {
         dnft.removeTokenSale(1);
         assertEq(0, dnft.getPrice(1));
     }
+    function testRemoveTokenSaleAfterTransfer() public {
+        dnft.MintNFT(alice); //TokenID=1
+        vm.prank(alice);
+        dnft.setPrice(1, 10 ether);
+        assertEq(10 ether, dnft.getPrice(1));
+        vm.prank(PLAYER);
+        dnft.buyToken{value: 10 ether}(1);
+        assertEq(0, dnft.getPrice(1));
+    }
     function testBuyToken() public {
         dnft.MintNFT(alice); //TokenID=1
         vm.prank(alice);
@@ -83,6 +92,16 @@ contract TokenTest is Test {
         vm.prank(PLAYER);
         dnft.buyToken{value: 10 ether}(1);
         assertEq(PLAYER, dnft.ownerOf(1));
+    }
+    function testSetApprovalWhensetPrice() public {
+        dnft.MintNFT(alice); //TokenID=1
+        dnft.MintNFT(alice); //TokenID=2
+        vm.prank(alice);
+        dnft.setPrice(1, 10 ether);
+        vm.prank(alice);
+        dnft.setPrice(2, 20 ether);
+        assertEq(address(dnft), dnft.getApproved(1));
+        assertEq(address(dnft), dnft.getApproved(2));
     }
     function testRevokApprovalWhenRemoveToken() public {
         dnft.MintNFT(alice); //TokenID=1
@@ -106,5 +125,32 @@ contract TokenTest is Test {
         vm.prank(PLAYER);
         vm.expectRevert(dNFT.dNFT__NotEnoughFunds.selector); 
         dnft.buyToken{value: 10 ether}(1);
+    }
+    function testBuyTokenFundSellerAndContract() public {
+        dnft.MintNFT(alice); //TokenID=1
+        vm.prank(alice);
+        dnft.setPrice(1, 10 ether);
+        vm.prank(PLAYER);
+        dnft.buyToken{value: 10 ether}(1);
+        assertEq(9 ether, address(dnft).balance);
+        assertEq(1 ether, alice.balance);
+    }
+    function testBuyTokenFundsByTokenId() public {
+        dnft.MintNFT(alice); //TokenID=1
+        vm.prank(bob);
+        dnft.setPrice(0, 10 ether);
+        vm.prank(alice);
+        dnft.setPrice(1, 20 ether);
+        vm.prank(PLAYER);
+        dnft.buyToken{value: 10 ether}(0);
+        dnft.buyToken{value: 20 ether}(1); //Player have TokenId 1 and 2 (balance alice = 2 eth)
+        assertEq(dnft.getFundsByTokenId(0), 9 ether);
+        assertEq(dnft.getFundsByTokenId(1), 18 ether);
+        vm.prank(PLAYER);
+        dnft.setPrice(0, 2 ether); //Token 1 = 2 eth
+        vm.prank(alice);
+        dnft.buyToken{value: 2 ether}(0);
+        assertEq(alice, dnft.ownerOf(0)); //We check that the transfer works with successive purchases
+        assertEq(dnft.getFundsByTokenId(0), 10.8 ether); // 9 + 1.8 (= 2 * 0.9)
     }
 }
