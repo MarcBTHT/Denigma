@@ -17,6 +17,7 @@ contract TokenTest is Test {
 
     /** EVENTS */
     event UpdatePrice(uint256 _tokenId, uint256 _price);
+    event Winner(address indexed winner);
 
     function setUp() public {
         deployer = new DeploydNFT();
@@ -37,7 +38,7 @@ contract TokenTest is Test {
         console.log(dnft.balanceOf(bob));
         vm.prank(alice); 
         dnft.transferFrom(alice, bob, 0); 
-        console.log(dnft.getBuyNumber());
+        console.log(dnft.getBuyNumberByTokenId(0));
         console.log(dnft.tokenURI(0));
         assertEq(bob, dnft.ownerOf(0));
     }
@@ -152,5 +153,45 @@ contract TokenTest is Test {
         dnft.buyToken{value: 2 ether}(0);
         assertEq(alice, dnft.ownerOf(0)); //We check that the transfer works with successive purchases
         assertEq(dnft.getFundsByTokenId(0), 10.8 ether); // 9 + 1.8 (= 2 * 0.9)
+    }
+    //Test ReleaseFunds
+    function testReleaseFunds() public {
+        uint256 BUY1 = 50 ether;
+        uint256 BUY2 = 5 ether;
+        uint256 BUY3 = 10 ether;
+        //Buy 1st time
+        vm.prank(bob);
+        dnft.setPrice(0, BUY1);
+        vm.prank(PLAYER);
+        dnft.buyToken{value: BUY1}(0); 
+        console.log("Number buy; ", dnft.getBuyNumberByTokenId(0));//s_buyNumberByTokenId[0]=1;
+        console.log("Balance bob: ", bob.balance);
+        console.log("Balance contract: ", address(dnft).balance); // =BUY1*0.9 (=45)
+        //Buy 2nd time
+        vm.prank(PLAYER);
+        dnft.setPrice(0, BUY2);
+        vm.prank(bob);
+        dnft.buyToken{value: BUY2}(0); //s_buyNumberByTokenId[0]=2;
+        console.log("Balance bob: ", bob.balance);
+        console.log("Balance contract: ", address(dnft).balance); // =BUY1*0.9 + BUY2*0.9 (=45+4.5=49.5)
+        //Buy 3rd time
+        vm.prank(bob);
+        dnft.setPrice(0, BUY3);
+        vm.prank(PLAYER);
+
+        // Test Event:
+        vm.expectEmit(true,false,false,false, address(dnft)); 
+        emit Winner(PLAYER); // The test pass if we have this emit with the next line
+        dnft.buyToken{value: BUY3}(0); //s_buyNumberByTokenId[0]=3;
+
+        console.log("Balance bob: ", bob.balance); // (BUY1/10) - BUY2 + (BUY3/10) (5-5+1=1)
+        console.log("Balance Player: ", PLAYER.balance); // 100 - BUY1 + (BUY2/10) - BUY3 (100-50+0.5-10=40.5) + BUY1*0.9 + BUY2*0.9 + BUY3*0.9 (45+4.5+9=58.5)
+        assertEq((BUY1/10) - BUY2 + (BUY3/10), bob.balance);
+        assertEq(STARTING_USER_BALANCE - BUY1 + (BUY2/10) - BUY3+ (BUY1*9)/10 + (BUY2*9)/10 + (BUY3*9)/10, PLAYER.balance); //Test if he receive the funds
+        
+        // Test if all the things are reinisiallise:
+        assertEq(0, dnft.getFundsByTokenId(0));
+        assertEq(0, address(dnft).balance); //Because here we have only 1 token (just to check)
+        assertEq(0, dnft.getBuyNumberByTokenId(0));
     }
 }
