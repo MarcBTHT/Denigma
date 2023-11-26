@@ -33,7 +33,7 @@ import "lib/openzeppelin-contracts/contracts/utils/Strings.sol";
 import {VRFCoordinatorV2Interface} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import {VRFConsumerBaseV2} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 
-import {console} from "forge-std/Script.sol"; 
+// import {console} from "forge-std/Script.sol"; 
 
 contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
 
@@ -74,13 +74,15 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     mapping(uint256 => uint256) private RaffleByTokenId; // TokenId => raffle ID (For the Buy function)
     mapping(uint256 => uint256) private raffleFee; // raffle1 => fee1
     mapping(uint256 => uint256[]) private tokenIdByRaffle; //(RAFFLE1 => [TOKENID1,2,4,9...])
-    RaffleState private s_raffleState; //WE NEED TO DO A MAPPING (Raffleid => raffleState)
+    mapping(uint256 => RaffleState) private raffleStates; // (Raffleid => raffleState)
+    mapping(uint256 => bool) private isPurchase; // (tokenId => bool) //To know if the token has been purchased by our function buyToken (To increase buy number only if it's really buy)
 
     event EnteredRaffle(address indexed player, uint256 raffleNumber, uint256 tokenId);
     event UpdatePrice(uint256 _tokenId, uint256 _price);
     event RemoveFromSale(uint256 _tokenId);
     event Purchase(address indexed buyer, address indexed seller, uint256 price);
     event Winner(address indexed winner, uint256 winningTokenId, uint256 amount);
+    event RandomNum(uint256 randomNum);
 
     /** 
         * @dev Only the Owner of _tokenId must be the caller
@@ -97,7 +99,6 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         Ownable(initialOwner) {
         i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinator);
         i_subscriptionId = subscriptionId;    
-        s_raffleState = RaffleState.OPEN;
     }
     function _mintNFT(address to) internal {
         uint256 tokenId = _nextTokenId++;
@@ -111,6 +112,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     function createRaffle(uint256 entranceFee) external onlyOwner {
         uint256 raffleId = _nextRaffleId++;
         raffleFee[raffleId] = entranceFee;
+        raffleStates[raffleId] = RaffleState.OPEN;
     }
     function enterRaffle(uint256 RaffleNumber) external payable {
         if (RaffleNumber > _nextRaffleId-1) {
@@ -119,7 +121,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         if (msg.value < i_entranceFee) {
             revert dNFT__NotEnoughETHSent();
         }
-        if (s_raffleState != RaffleState.OPEN) { 
+        if (raffleStates[RaffleNumber] != RaffleState.OPEN) { 
             revert dNFT__RaffleNotOpen();
         }
         uint256 tempTokenId = _nextTokenId;
@@ -141,12 +143,10 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         if (to == address(0)) {
             revert ERC721InvalidReceiver(address(0));
         }
-        s_buyNumberByTokenId[tokenId]++; // !!!WE NEED TO DO THAT ONLY IF IT'S THE CONTRACT THAT CALL TRANSFERFROM!!!  TO DO !!!!
+        if (isPurchase[tokenId]) { //If the token has been purchased by our function buyToken
+            s_buyNumberByTokenId[tokenId]++;
+        }
         delete prices[tokenId];
-        /** WE Don't anymore do that. The more tranfer you did the more you have chance to win. But we pick the winner only at the end of the Enigma.
-        if (s_buyNumberByTokenId[tokenId] == s_randomNumber) {
-            releaseFunds(to, tokenId); // Release funds to the new owner before transfer
-        } */
         return super.transferFrom(from,to,tokenId);
     }
     
@@ -175,6 +175,10 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         if (msg.value < prices[_tokenId]) {
             revert dNFT__NotEnoughFunds();
         }
+        uint256 raffleId = RaffleByTokenId[_tokenId]; // Find the associated raffle
+        if (raffleStates[raffleId] == RaffleState.CALCULATING) {
+            revert dNFT__RaffleNotOpen();
+        }
         address seller = ownerOf(_tokenId);
         address buyer = msg.sender;
         // Calculate the split
@@ -186,20 +190,19 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
             revert dNFT__TransferFailed();
         }
 
-        // Find the associated raffle and transfer raffle's share
-        uint256 raffleId = RaffleByTokenId[_tokenId];
-        fundsByRaffleId[raffleId] += raffleShare;
+        fundsByRaffleId[raffleId] += raffleShare; // transfer raffle's share
 
         emit Purchase(buyer, seller, msg.value);
-
+        isPurchase[_tokenId] = true; //To know if the token has been purchased by our function buyToken
         IERC721(address(this)).transferFrom(seller, buyer, _tokenId); //To make the contract call the function
+        isPurchase[_tokenId] = false;
     }
     function pickWinner(uint256 _closeRaffleId) external onlyOwner {
         //METTRE DES CONDITIONS When Automation//
         closeRaffleId = _closeRaffleId;
-        s_raffleState = RaffleState.CALCULATING;
+        raffleStates[closeRaffleId] = RaffleState.CALCULATING;
         // Get a Random winner
-        /** GET THE FOLLOWING OFF WHEN TESTING (Until I did a config for anvil) */
+        /** GET THE FOLLOWING OFF WHEN TESTING (Until I did a config for anvil)*/
         i_vrfCoordinator.requestRandomWords( //On fait la requete pour avoir nombre random ! Après chainlink appel fulfillRandomWords
             keyHash, 
             i_subscriptionId,
@@ -225,10 +228,11 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         uint256 indexOfWinner = randomWords[0] % totalTokens;
         uint256 winningTokenId = tokensInRaffle[indexOfWinner];
         address winner = ownerOf(winningTokenId);
+        emit RandomNum(randomWords[0]);
 
-        console.log("randomNumber: ", randomWords[0]);
-        console.log("totalTokens: ", totalTokens);
-        console.log("indexOfWinner: ", indexOfWinner);
+        // console.log("randomNumber: ", randomWords[0]);
+        // console.log("totalTokens: ", totalTokens);
+        // console.log("indexOfWinner: ", indexOfWinner);
 
         //Release Funds:
         uint256 amount = fundsByRaffleId[closeRaffleId];
@@ -242,7 +246,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         }
         fundsByRaffleId[closeRaffleId] = 0;
 
-        s_raffleState = RaffleState.OPEN;
+        raffleStates[closeRaffleId] = RaffleState.OPEN;
     }
 
     //////////////////
@@ -304,5 +308,8 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     }
     function getRaffleIdByTokenId(uint256 _raffleId) external view returns (uint256[] memory) {
         return tokenIdByRaffle[_raffleId];
+    }
+    function getfundsByRaffleId(uint256 _raffleId) external view returns (uint256) {
+        return fundsByRaffleId[_raffleId];
     }
 }
