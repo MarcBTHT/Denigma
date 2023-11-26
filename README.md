@@ -7,6 +7,7 @@
 - [Problem Statement](#problem-statement)
 - [Solution](#solution)
 - [Features](#features)
+- [Community Focus](#community-focus)
 - [Benefits](#benefits)
 - [Product](#product)
 - [Getting Started](#getting-started)
