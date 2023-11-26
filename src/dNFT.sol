@@ -46,6 +46,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     error dNFT__TransferFailed();
     error dNFT__RaffleNotExist();
     error dNFT__NoTokensInRaffle();
+    error dNFT__UpkeepNotNeeded();
 
     enum RaffleState { //When we calculating winner nobody can enter
         OPEN, //0
@@ -61,9 +62,9 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     uint32 private constant NUM_WORDS = 1; // @dev Number of random words to generate
     uint32 private constant CALL_BACK_GAS_LIMIT = 100000;
     VRFCoordinatorV2Interface private immutable i_vrfCoordinator;
-    uint64 private immutable i_subscriptionId;
-    bytes32 private keyHash = 0x474e34a077df58807dbe9c96d3c009b23b3c6d0cce433e59bbf5b34f823bc56c; //Gas fee we pay (DEPENDS ON THE NETWORK) (Here sepolia)
-    
+    uint64 private immutable i_subscriptionId; // @dev Chainlink VRF SubscriptionId
+    bytes32 private immutable keyHash = 0x474e34a077df58807dbe9c96d3c009b23b3c6d0cce433e59bbf5b34f823bc56c; //Gas fee we pay (DEPENDS ON THE NETWORK) (Here sepolia)
+
     uint256 private immutable i_entranceFee;
     uint256 private _nextTokenId;
     uint256 private _nextRaffleId;
@@ -76,6 +77,8 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     mapping(uint256 => uint256[]) private tokenIdByRaffle; //(RAFFLE1 => [TOKENID1,2,4,9...])
     mapping(uint256 => RaffleState) private raffleStates; // (Raffleid => raffleState)
     mapping(uint256 => bool) private isPurchase; // (tokenId => bool) //To know if the token has been purchased by our function buyToken (To increase buy number only if it's really buy)
+    mapping(uint256 => uint256) private raffleIntervals; // (RaffleId => interval) Chainlink Automation
+    mapping(uint256 => uint256) private raffleLastTimeStamp; // (RaffleId => lastTimeStamp) Chainlink Automation
 
     event EnteredRaffle(address indexed player, uint256 raffleNumber, uint256 tokenId);
     event UpdatePrice(uint256 _tokenId, uint256 _price);
@@ -109,10 +112,12 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     function MintNFT(address to) public onlyOwner { //Because I need to change all my test (To only mint when enter a raffle)
         _mintNFT(to);
     }
-    function createRaffle(uint256 entranceFee) external onlyOwner {
+    function createRaffle(uint256 entranceFee, uint256 interval) external onlyOwner {
         uint256 raffleId = _nextRaffleId++;
         raffleFee[raffleId] = entranceFee;
-        raffleStates[raffleId] = RaffleState.OPEN;
+        raffleStates[raffleId] = RaffleState.OPEN; 
+        raffleIntervals[raffleId] = interval; // Set the duration of the raffle
+        raffleLastTimeStamp[raffleId] = block.timestamp; // Set the last timestamp of the raffle
     }
     function enterRaffle(uint256 RaffleNumber) external payable {
         if (RaffleNumber > _nextRaffleId-1) {
@@ -148,8 +153,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         }
         delete prices[tokenId];
         return super.transferFrom(from,to,tokenId);
-    }
-    
+    }  
     function setPrice(uint256 _tokenId, uint256 _price)
         external
         virtual
@@ -197,11 +201,30 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         IERC721(address(this)).transferFrom(seller, buyer, _tokenId); //To make the contract call the function
         isPurchase[_tokenId] = false;
     }
-    function pickWinner(uint256 _closeRaffleId) external onlyOwner {
-        //METTRE DES CONDITIONS When Automation//
-        closeRaffleId = _closeRaffleId;
+    /**
+     * @dev This is the function that the Chainlink Keeper nodes call
+     * they look for `upkeepNeeded` to return True.
+    */
+    function checkUpkeep(
+        bytes memory /* checkData */
+    ) public returns (bool upkeepNeeded, bytes memory /* performData */) {
+        for (uint256 raffle_Id = 0; raffle_Id < _nextRaffleId; raffle_Id++) { // Loop through all raffles to see if one is ready to be closed
+            bool timeHasPassed = (block.timestamp - raffleLastTimeStamp[raffle_Id]) >= raffleIntervals[raffle_Id];
+            bool isOpen = RaffleState.OPEN == raffleStates[raffle_Id];
+            bool hasPlayers = tokenIdByRaffle[raffle_Id].length > 0;
+            if (timeHasPassed && isOpen && hasPlayers ) {
+                closeRaffleId = raffle_Id;
+                return (true, "0x0");
+            }
+        }
+        return (false, "0x0");
+    }
+    function performUpkeep(bytes calldata /* performData */) external {
+        (bool upkeepNeeded,) = checkUpkeep("");
+        if (!upkeepNeeded) {
+            revert dNFT__UpkeepNotNeeded();
+        }
         raffleStates[closeRaffleId] = RaffleState.CALCULATING;
-        // Get a Random winner
         /** GET THE FOLLOWING OFF WHEN TESTING (Until I did a config for anvil)*/
         i_vrfCoordinator.requestRandomWords( //On fait la requete pour avoir nombre random ! Après chainlink appel fulfillRandomWords
             keyHash, 
@@ -245,8 +268,6 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
             revert dNFT__TransferFailed();
         }
         fundsByRaffleId[closeRaffleId] = 0;
-
-        raffleStates[closeRaffleId] = RaffleState.OPEN;
     }
 
     //////////////////
@@ -311,5 +332,8 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     }
     function getfundsByRaffleId(uint256 _raffleId) external view returns (uint256) {
         return fundsByRaffleId[_raffleId];
+    }
+    function getLastTimeStamp(uint256 _raffleId) external view returns (uint256) {
+        return raffleLastTimeStamp[_raffleId];
     }
 }

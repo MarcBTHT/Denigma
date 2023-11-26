@@ -201,13 +201,13 @@ contract TokenTest is Test {
     // Create/Enter Raffle //
     /////////////////////////
     function testCreateRaffle() public {
-        dnft.createRaffle(1 ether);
-        dnft.createRaffle(10 ether);
+        dnft.createRaffle(1 ether, 60);
+        dnft.createRaffle(10 ether, 60);
         assertEq(1 ether, dnft.getRaffleFee(0));
         assertEq(10 ether, dnft.getRaffleFee(1));
     }
     function testEnterRaffle() public {
-        dnft.createRaffle(1 ether);
+        dnft.createRaffle(1 ether, 60);
         vm.prank(PLAYER);
         dnft.enterRaffle{value: 1 ether}(0);
         vm.prank(PLAYER);
@@ -224,14 +224,14 @@ contract TokenTest is Test {
         dnft.enterRaffle{value: 1 ether}(1);
     }
     function testFailEnterRaffleWithInsufficientETH() public {
-        dnft.createRaffle(1 ether);
+        dnft.createRaffle(1 ether, 60);
         // Attempt to enter with less than the required ETH
         vm.prank(PLAYER);
         vm.expectRevert(dNFT.dNFT__NotEnoughETHSent.selector);
         dnft.enterRaffle{value: 0.5 ether}(0);
     }
     function testFailEnterClosedRaffle() public {
-        dnft.createRaffle(1 ether);
+        dnft.createRaffle(1 ether, 60);
         // Attempt to enter a closed raffle
         vm.prank(PLAYER);
         vm.expectRevert(dNFT.dNFT__RaffleNotOpen.selector);
@@ -239,7 +239,7 @@ contract TokenTest is Test {
     }
     function testEmitEnterRaffle() public 
     {
-        dnft.createRaffle(1 ether);
+        dnft.createRaffle(1 ether, 60);
         uint256 raffleNumber = 0;
         vm.prank(PLAYER);
         vm.expectEmit(true,true,true,false, address(dnft)); 
@@ -248,8 +248,8 @@ contract TokenTest is Test {
     }
     function testEnterRaffleWithMultipleRaffles() public {
         // Create two raffles
-        dnft.createRaffle(1 ether);
-        dnft.createRaffle(2 ether);
+        dnft.createRaffle(1 ether, 60);
+        dnft.createRaffle(2 ether, 60);
 
         // Enter the first raffle
         vm.prank(PLAYER);
@@ -277,7 +277,8 @@ contract TokenTest is Test {
     /////////////////////////////
     function testPickWinner() public {
         // Setup: Create and enter raffles
-        dnft.createRaffle(50 ether);
+        uint256 interval = 60;
+        dnft.createRaffle(50 ether, interval);
 
         vm.prank(PLAYER);
         dnft.enterRaffle{value: 50 ether}(0);
@@ -286,8 +287,11 @@ contract TokenTest is Test {
         vm.prank(PLAYER);
         dnft.enterRaffle{value: 50 ether}(0);
 
+        vm.warp(block.timestamp + interval +1); 
+        vm.roll(block.number +1); 
+
         // Close a raffle and request a random winner (The owner want to closeRaffleId = 0)
-        dnft.pickWinner(0);
+        dnft.performUpkeep("");
 
         // Simulation of Chainlink respond:
         uint256[] memory randomWords = new uint256[](2);
@@ -298,13 +302,74 @@ contract TokenTest is Test {
         assertEq(200 ether, alice.balance);
     }
     function testPickWinnerNoTokensInRaffle() public {
-        dnft.createRaffle(50 ether);
-        dnft.pickWinner(0);
+        uint256 interval = 60;
+        dnft.createRaffle(50 ether, interval);
+
+        vm.warp(block.timestamp + interval +1); 
+        vm.roll(block.number +1); 
+        vm.expectRevert(dNFT.dNFT__UpkeepNotNeeded.selector); //Because no tokens in raffle (hasPlayers = false)
+        dnft.performUpkeep("");
 
         uint256[] memory randomWords = new uint256[](1);
         randomWords[0] = 123456789;
 
         vm.expectRevert(dNFT.dNFT__NoTokensInRaffle.selector);
         dnft.testFulfillRandomWords(1, randomWords);
+    }
+    /////////////////////////////////////////
+    ///// checkUpkeep / performUpkeep //////
+    ///////////////////////////////////////
+    function testCheckUpkeepReturnsFalseIfEnoughTimeHasntPassed() public {
+        uint256 interval = 60;
+        dnft.createRaffle(50 ether, interval);
+
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 50 ether}(0);
+
+        vm.warp(block.timestamp + interval - 1);
+        vm.roll(block.number + 1);
+        vm.expectRevert(dNFT.dNFT__UpkeepNotNeeded.selector); //Because no tokens in raffle (timeHasPassed = false)
+        dnft.performUpkeep("");
+    }
+    function testCheckUpkeepWhenTheSecondRaffleIsGood() public {
+
+        dnft.createRaffle(25 ether, 120); //Raffle 0 (interval = 120)
+        dnft.createRaffle(25 ether, 60); //Raffle 1 (interval = 60)
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 1
+        vm.prank(alice);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 2
+
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(1); // tokenId = 3
+        vm.prank(alice);
+        dnft.enterRaffle{value: 25 ether}(1); // tokenId = 4
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(1); // tokenId = 5
+
+        vm.warp(block.timestamp + 60 +1); //Raffle 1 Ok
+        vm.roll(block.number +1); 
+        dnft.performUpkeep("");
+
+        uint256[] memory randomWords = new uint256[](1);
+        randomWords[0] = 12882188218;
+        dnft.testFulfillRandomWords(1, randomWords); // 3 tokens so 12882188218 % 3 = 1 --> alice (TokenId=4)
+
+        assertEq(STARTING_USER_BALANCE + 25 ether, alice.balance);
+    }
+    function testCheckUpKeepRevertWhenRaffleCalculating() public {
+        dnft.createRaffle(25 ether, 60); 
+        dnft.createRaffle(25 ether, 60);
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(0);
+
+        vm.warp(block.timestamp + 60 +1); 
+        vm.roll(block.number +1); 
+        dnft.performUpkeep("");
+        
+        vm.warp(block.timestamp + 60 +1); 
+        vm.roll(block.number +1); 
+        vm.expectRevert(dNFT.dNFT__UpkeepNotNeeded.selector);
+        dnft.performUpkeep("");
     }
 }
