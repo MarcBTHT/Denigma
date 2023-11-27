@@ -59,7 +59,7 @@ Our platform reinvents the lottery by creating a space where players' actions an
 - **Socially Responsible**: Contributes to societal causes through thematic lotteries.
 
 ## Product
-- diagram
+![image](https://github.com/MarcBTHT/Denigma/assets/116173196/47cc15b1-fd49-4054-a8fc-9f66940a5445)
 
 ## Getting Started
 
