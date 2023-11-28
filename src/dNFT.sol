@@ -76,9 +76,11 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     mapping(uint256 => uint256) private raffleFee; // raffle1 => fee1
     mapping(uint256 => uint256[]) private tokenIdByRaffle; //(RAFFLE1 => [TOKENID1,2,4,9...])
     mapping(uint256 => RaffleState) private raffleStates; // (Raffleid => raffleState)
-    mapping(uint256 => bool) private isPurchase; // (tokenId => bool) //To know if the token has been purchased by our function buyToken (To increase buy number only if it's really buy)
     mapping(uint256 => uint256) private raffleIntervals; // (RaffleId => interval) Chainlink Automation
     mapping(uint256 => uint256) private raffleLastTimeStamp; // (RaffleId => lastTimeStamp) Chainlink Automation
+    mapping(uint256 => mapping(uint256 => uint256)) private tokenScoreByRaffle; // (RaffleId => (tokenId => score)) 
+    mapping(uint256 => uint256) private totalScoreByRaffle; // (RaffleId => totalScore) 
+
 
     event EnteredRaffle(address indexed player, uint256 raffleNumber, uint256 tokenId);
     event UpdatePrice(uint256 _tokenId, uint256 _price);
@@ -133,6 +135,9 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         _mintNFT(msg.sender); //Mint a NFT for the player 
         tokenIdByRaffle[RaffleNumber].push(tempTokenId); // ADD the tokenId to the associated raffle
         RaffleByTokenId[tempTokenId] = RaffleNumber; // Associate the token with the raffle
+        
+        updateScore(RaffleNumber, tempTokenId, 1);// Starting score for the evolution of the NFT
+        
         fundsByRaffleId[RaffleNumber] += msg.value;// Add entrance fee to raffle's funds
         emit EnteredRaffle(msg.sender, RaffleNumber, tempTokenId);
     }
@@ -147,9 +152,6 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     function transferFrom(address from, address to, uint256 tokenId) public override(ERC721, IERC721) {
         if (to == address(0)) {
             revert ERC721InvalidReceiver(address(0));
-        }
-        if (isPurchase[tokenId]) { //If the token has been purchased by our function buyToken
-            s_buyNumberByTokenId[tokenId]++;
         }
         delete prices[tokenId];
         return super.transferFrom(from,to,tokenId);
@@ -195,12 +197,37 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         }
 
         fundsByRaffleId[raffleId] += raffleShare; // transfer raffle's share
-
         emit Purchase(buyer, seller, msg.value);
-        isPurchase[_tokenId] = true; //To know if the token has been purchased by our function buyToken
+
+        UpdateBuyScore(raffleId, _tokenId); // Update the score of the NFT 
+
         IERC721(address(this)).transferFrom(seller, buyer, _tokenId); //To make the contract call the function
-        isPurchase[_tokenId] = false;
     }
+    ////////////////
+    //dNFT update//
+    ///////////////
+    /**
+     * @dev This is the function update the state of the NFT. It's call in the other functions (when Buying a NFT, when succeed a quest, ...)
+     */
+    function updateScore(uint256 raffleId, uint256 tokenId, uint256 score) internal {
+        if (raffleStates[raffleId] != RaffleState.OPEN) { 
+            revert dNFT__RaffleNotOpen();
+        }
+        tokenScoreByRaffle[raffleId][tokenId] += score; 
+        totalScoreByRaffle[raffleId] += score;
+    }
+    /**
+     * @dev When a player buy a NFT we update the score of the NFT (dNFT)
+     */
+    function UpdateBuyScore(uint256 raffleId, uint256 tokenId) internal {
+        s_buyNumberByTokenId[tokenId]++;
+        if (s_buyNumberByTokenId[tokenId] % 3 == 0) { // Need to modify to be the most fair possible
+            updateScore(raffleId, tokenId, 1); // Increment the score by 1 for every 3 buys
+        }
+    }
+    ////////////////////////
+    //CHAINLINK automation//
+    ////////////////////////
     /**
      * @dev This is the function that the Chainlink Keeper nodes call
      * they look for `upkeepNeeded` to return True.
@@ -238,24 +265,33 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     function testFulfillRandomWords(uint256 requestId, uint256[] memory randomWords) public { 
         fulfillRandomWords(requestId, randomWords);
     }
+    //////////////////
+    //CHAINLINK VRF//
+    /////////////////
     function fulfillRandomWords( //C'est la fonction que chainlink appel, elle donne en paramètre le nombre random que l'on veut !! Après on fait ce que l'on en veut !!!
         uint256 /*requestId*/,
         uint256[] memory randomWords
     ) internal override {
         uint256[] memory tokensInRaffle = tokenIdByRaffle[closeRaffleId];
         uint256 totalTokens = tokensInRaffle.length;
-
         if (totalTokens == 0) {
             revert dNFT__NoTokensInRaffle();
         }
-        uint256 indexOfWinner = randomWords[0] % totalTokens;
-        uint256 winningTokenId = tokensInRaffle[indexOfWinner];
-        address winner = ownerOf(winningTokenId);
         emit RandomNum(randomWords[0]);
+        uint256 totalWeight = totalScoreByRaffle[closeRaffleId]; //Each Token Have a score : Token1=1, Token2=3, Token3=2 => totalWeight = 6
+        uint256 weightedRandomIndex = randomWords[0] % totalWeight; //Give a random number between 0 and totalWeight => For exemple 2
+        uint256 runningTotal = 0;
+        uint256 winningTokenId = 0; // Temporary variable to store the winning token ID
 
-        // console.log("randomNumber: ", randomWords[0]);
-        // console.log("totalTokens: ", totalTokens);
-        // console.log("indexOfWinner: ", indexOfWinner);
+        for (uint256 i = 0; i < totalTokens; i++) { //We fo through all the tokens in the raffle (In order, I think to randomize more we can shuffle the list before)
+            uint256 tokenId = tokensInRaffle[i]; // Loop1: TolenId1 // Loop2: TokenId2
+            runningTotal += tokenScoreByRaffle[closeRaffleId][tokenId]; // Loop1: 0+1=1 // Loop2: 1+3=4 or 2 < 4 => Winning TokenId = TokenId2
+            if (weightedRandomIndex < runningTotal) { //< or <= ?? Need to see
+                winningTokenId = tokenId; // Return the winning token ID
+                break;
+            }
+        }
+        address winner = ownerOf(winningTokenId);
 
         //Release Funds:
         uint256 amount = fundsByRaffleId[closeRaffleId];
@@ -335,5 +371,8 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     }
     function getLastTimeStamp(uint256 _raffleId) external view returns (uint256) {
         return raffleLastTimeStamp[_raffleId];
+    }
+    function getTokenScoreByRaffle(uint256 raffleId, uint256 tokenId) public view returns (uint256) {
+        return tokenScoreByRaffle[raffleId][tokenId];
     }
 }

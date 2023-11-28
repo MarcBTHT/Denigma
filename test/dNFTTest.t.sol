@@ -13,11 +13,12 @@ contract TokenTest is Test {
     address public bob = makeAddr("bob");
     address public alice = makeAddr("alice");
     address public PLAYER = makeAddr("player");
+    address public PLAYER2 = makeAddr("player2");
     uint256 public constant STARTING_USER_BALANCE = 100 ether;
 
     /** EVENTS */
     event UpdatePrice(uint256 _tokenId, uint256 _price);
-    event Winner(address indexed winner);
+    event Winner(address indexed winner, uint256 winningTokenId, uint256 amount);
     event EnteredRaffle(address indexed player, uint256 raffleNumber, uint256 tokenId);
 
     function setUp() public {
@@ -27,6 +28,7 @@ contract TokenTest is Test {
         dnft.MintNFT(bob); // Minting a token to bob
         vm.deal(PLAYER, STARTING_USER_BALANCE);
         vm.deal(alice, STARTING_USER_BALANCE);
+        vm.deal(PLAYER2, STARTING_USER_BALANCE);
     }
 
     function testBobBalance() public {
@@ -275,7 +277,7 @@ contract TokenTest is Test {
     //////////////////////////////
     // PickWinner Release Funds //
     /////////////////////////////
-    function testPickWinner() public {
+    function testPickWinner() public {  //§!!!!!!!!!!!!!!!!!!
         // Setup: Create and enter raffles
         uint256 interval = 60;
         dnft.createRaffle(50 ether, interval);
@@ -331,7 +333,7 @@ contract TokenTest is Test {
         vm.expectRevert(dNFT.dNFT__UpkeepNotNeeded.selector); //Because no tokens in raffle (timeHasPassed = false)
         dnft.performUpkeep("");
     }
-    function testCheckUpkeepWhenTheSecondRaffleIsGood() public {
+    function testCheckUpkeepWhenTheSecondRaffleIsGood() public { //§!!!!!!!!!!!!!!!!!!
 
         dnft.createRaffle(25 ether, 120); //Raffle 0 (interval = 120)
         dnft.createRaffle(25 ether, 60); //Raffle 1 (interval = 60)
@@ -372,4 +374,81 @@ contract TokenTest is Test {
         vm.expectRevert(dNFT.dNFT__UpkeepNotNeeded.selector);
         dnft.performUpkeep("");
     }
+    //////////////////////////
+    // Evolution NFT score //
+    /////////////////////////
+    function testScoreEvolutionWhenBuying() public {
+        dnft.createRaffle(25 ether, 60); 
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 1
+        vm.prank(alice);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 2
+
+        vm.prank(PLAYER);
+        dnft.setPrice(1, 10 ether); // player : 0 token
+        vm.prank(alice);
+        dnft.buyToken{value: 10 ether}(1); // alice : TokenId 1 and 2
+        assertEq(1, dnft.getTokenScoreByRaffle(0,1));
+
+        vm.prank(alice);
+        dnft.setPrice(1, 20 ether); // alice : TokenId 2
+        vm.prank(PLAYER2); 
+        dnft.buyToken{value: 20 ether}(1); // Player2 : TokenId 1
+        assertEq(1, dnft.getTokenScoreByRaffle(0,1));
+        assertEq(2, dnft.getBuyNumberByTokenId(1));
+
+        vm.prank(PLAYER2); 
+        dnft.setPrice(1, 30 ether); // player2 : 0 token
+        vm.prank(PLAYER);
+        dnft.buyToken{value: 30 ether}(1); // player : tokenId 1
+        assertEq(2, dnft.getTokenScoreByRaffle(0,1));
+        assertEq(3, dnft.getBuyNumberByTokenId(1));
+
+        //We also test the ownership of the token:
+        assertEq(PLAYER, dnft.ownerOf(1));
+        assertEq(alice, dnft.ownerOf(2));
+    }
+    function testEvolutionOnScoreChangeTheRandomPick() public {
+        //Same as before : We have 2 tokens in the raffle and TokenId 1 with a score = 2
+        dnft.createRaffle(25 ether, 60); 
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 1
+        vm.prank(alice);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 2
+
+        vm.prank(PLAYER);
+        dnft.setPrice(1, 10 ether); // player : 0 token
+        vm.prank(alice);
+        dnft.buyToken{value: 10 ether}(1); // alice : TokenId 1 and 2
+
+        vm.prank(alice);
+        dnft.setPrice(1, 20 ether); // alice : TokenId 2
+        vm.prank(PLAYER2); 
+        dnft.buyToken{value: 20 ether}(1); // Player2 : TokenId 1
+
+        vm.prank(PLAYER2); 
+        dnft.setPrice(1, 30 ether); // player2 : 0 token
+        vm.prank(PLAYER);
+        dnft.buyToken{value: 30 ether}(1); // player : tokenId 1
+
+        console.log("Balance player: ", PLAYER.balance);
+        uint256 balanceplayer = PLAYER.balance;
+
+        uint256 fundsRaffle0 = dnft.getfundsByRaffleId(0); // 0.9*10 + 0.9*20 + 0.9*30 = 54 // + 50 = 104
+        //Know we look for the winner:
+        vm.warp(block.timestamp + 60 +1); //Raffle 1 Ok
+        vm.roll(block.number +1); 
+        dnft.performUpkeep("");
+
+        uint256[] memory randomWords = new uint256[](1);
+        randomWords[0] = 12882188218;
+
+        vm.expectEmit(true,true,true,false, address(dnft)); //Test event
+        emit Winner(PLAYER,1, fundsRaffle0); 
+        dnft.testFulfillRandomWords(1, randomWords); // 2 tokens with score 2+1=3 so 12882188218 % 3 = 1 --> player (TokenId=1)
+        //Because 1 < 2(=score tokenId1) (weightedRandomIndex < runningTotal)
+
+        assertEq(balanceplayer+fundsRaffle0, PLAYER.balance);
+    }
+
 }
