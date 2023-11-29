@@ -10,11 +10,13 @@ contract DeployedNFT is Script {
     address public mySepoliaAddress = 0xc29dEE36CEaF01B276002CDF894814A2b3Fa8aAf;
 
     address public vrfCoordinator = 0x8103B0A8A00be2DDC778e6e7eaa21791Cd364625; //COORDINATOR SEPOLIA
+    address public vrfCoordinatorFUJI = 0x2eD832Ba664535e5886b75D64C46EB9a228C2610; //COORDINATOR FUJI
     uint64 public constant subscriptionId = 6990; //Subscription ID for the VRF (ETH SEPOLIA)
+    uint64 public constant subscriptionIdFUJI = 793; //Subscription ID for the VRF (FUJI)
 
     function run() external returns (dNFT) {
         vm.startBroadcast();
-        dNFT dnft = new dNFT(mySepoliaAddress,vrfCoordinator,subscriptionId); 
+        dNFT dnft = new dNFT(mySepoliaAddress,vrfCoordinatorFUJI,subscriptionIdFUJI); 
         vm.stopBroadcast();
         return dnft;
     }

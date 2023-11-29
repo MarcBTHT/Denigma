@@ -61,9 +61,11 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     uint16 private constant REQUEST_CONFIRMATIONS = 3; // @dev Number of confirmations required to accept the VRF request
     uint32 private constant NUM_WORDS = 1; // @dev Number of random words to generate
     uint32 private constant CALL_BACK_GAS_LIMIT = 100000;
+    uint32 private constant CALL_BACK_GAS_LIMIT_FUJI = 24900000;
     VRFCoordinatorV2Interface private immutable i_vrfCoordinator;
     uint64 private immutable i_subscriptionId; // @dev Chainlink VRF SubscriptionId
     bytes32 private immutable keyHash = 0x474e34a077df58807dbe9c96d3c009b23b3c6d0cce433e59bbf5b34f823bc56c; //Gas fee we pay (DEPENDS ON THE NETWORK) (Here sepolia)
+    bytes32 private immutable keyHashFUJI = 0x354d2f95da55398f44b7cff77da56283d9c6c829a4bdf1bbcaf2ad6a4d081f61; //Gas fee (Here fuji)
 
     uint256 private immutable i_entranceFee;
     uint256 private _nextTokenId;
@@ -78,7 +80,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     mapping(uint256 => RaffleState) private raffleStates; // (Raffleid => raffleState)
     mapping(uint256 => uint256) private raffleIntervals; // (RaffleId => interval) Chainlink Automation
     mapping(uint256 => uint256) private raffleLastTimeStamp; // (RaffleId => lastTimeStamp) Chainlink Automation
-    mapping(uint256 => mapping(uint256 => uint256)) private tokenScoreByRaffle; // (RaffleId => (tokenId => score)) 
+    mapping(uint256 => mapping(uint256 => uint256)) private tokenScoreByRaffle; // (RaffleId => (tokenId => score))  //I need RaffleId because this way I don't need to loop on tokenIdByRaffle to take the score
     mapping(uint256 => uint256) private totalScoreByRaffle; // (RaffleId => totalScore) 
 
 
@@ -88,6 +90,8 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     event Purchase(address indexed buyer, address indexed seller, uint256 price);
     event Winner(address indexed winner, uint256 winningTokenId, uint256 amount);
     event RandomNum(uint256 randomNum);
+    event CreatedRaffle(uint256 raffleId, uint256 entranceFee, uint256 interval);
+    event UpdatedScore(uint256 raffleId, uint256 tokenId, uint256 score);
 
     /** 
         * @dev Only the Owner of _tokenId must be the caller
@@ -120,6 +124,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         raffleStates[raffleId] = RaffleState.OPEN; 
         raffleIntervals[raffleId] = interval; // Set the duration of the raffle
         raffleLastTimeStamp[raffleId] = block.timestamp; // Set the last timestamp of the raffle
+        emit CreatedRaffle(raffleId, entranceFee, interval);
     }
     function enterRaffle(uint256 RaffleNumber) external payable {
         if (RaffleNumber > _nextRaffleId-1) {
@@ -213,6 +218,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         if (raffleStates[raffleId] != RaffleState.OPEN) { 
             revert dNFT__RaffleNotOpen();
         }
+        emit UpdatedScore(raffleId,tokenId,score);
         tokenScoreByRaffle[raffleId][tokenId] += score; 
         totalScoreByRaffle[raffleId] += score;
     }
@@ -254,10 +260,10 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         raffleStates[closeRaffleId] = RaffleState.CALCULATING;
         /** GET THE FOLLOWING OFF WHEN TESTING (Until I did a config for anvil)*/
         i_vrfCoordinator.requestRandomWords( //On fait la requete pour avoir nombre random ! Après chainlink appel fulfillRandomWords
-            keyHash, 
+            keyHashFUJI, 
             i_subscriptionId,
             REQUEST_CONFIRMATIONS,
-            CALL_BACK_GAS_LIMIT,
+            CALL_BACK_GAS_LIMIT_FUJI,
             NUM_WORDS
         );
     }
@@ -277,7 +283,6 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         if (totalTokens == 0) {
             revert dNFT__NoTokensInRaffle();
         }
-        emit RandomNum(randomWords[0]);
         uint256 totalWeight = totalScoreByRaffle[closeRaffleId]; //Each Token Have a score : Token1=1, Token2=3, Token3=2 => totalWeight = 6
         uint256 weightedRandomIndex = randomWords[0] % totalWeight; //Give a random number between 0 and totalWeight => For exemple 2
         uint256 runningTotal = 0;
@@ -291,6 +296,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
                 break;
             }
         }
+        emit RandomNum(randomWords[0]);
         address winner = ownerOf(winningTokenId);
 
         //Release Funds:
@@ -320,8 +326,9 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         returns (string memory)
     {
         string memory imageURI = s_bonus;
+        uint256 tokenScore = tokenScoreByRaffle[RaffleByTokenId[tokenId]][tokenId];
 
-        if (s_buyNumberByTokenId[tokenId] >= 1) { // !!TEMPORARY!! Just to test for the moment 
+        if (tokenScore > 1) { // !!TEMPORARY!! Just to test for the moment 
             imageURI = s_malus;
         }
         return 
@@ -333,8 +340,8 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
                             abi.encodePacked(
                                 '{"name":"',
                                 name(), 
-                                '", "BuyNumber":"',
-                                Strings.toString(s_buyNumberByTokenId[tokenId]),
+                                '", "score":"',
+                                Strings.toString(tokenScore),
                                 '", "image":"',
                                 imageURI,
                                 '"}'

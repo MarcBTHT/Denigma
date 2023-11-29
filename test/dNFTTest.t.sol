@@ -450,5 +450,29 @@ contract TokenTest is Test {
 
         assertEq(balanceplayer+fundsRaffle0, PLAYER.balance);
     }
+    function testTokenURI() public {
+        dnft.createRaffle(25 ether, 60); 
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 1
+        console.log(dnft.tokenURI(1)); // See the tokenURI
+
+        //Buy 3 times to see evolution:
+        vm.prank(PLAYER);
+        dnft.setPrice(1, 10 ether); // player : 0 token
+        vm.prank(alice);
+        dnft.buyToken{value: 10 ether}(1); // alice : TokenId 1 and 2
+
+        vm.prank(alice);
+        dnft.setPrice(1, 20 ether); // alice : TokenId 2
+        vm.prank(PLAYER2); 
+        dnft.buyToken{value: 20 ether}(1); // Player2 : TokenId 1
+
+        vm.prank(PLAYER2); 
+        dnft.setPrice(1, 30 ether); // player2 : 0 token
+        vm.prank(PLAYER);
+        dnft.buyToken{value: 30 ether}(1); // player : tokenId 1
+
+        console.log(dnft.tokenURI(1)); // Score = 2
+    }
 
 }
