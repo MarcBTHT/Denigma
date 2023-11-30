@@ -474,5 +474,67 @@ contract TokenTest is Test {
 
         console.log(dnft.tokenURI(1)); // Score = 2
     }
+    ///////////
+    // Bets //
+    //////////
+    function testCreateBet() public {
+        dnft.createBet(3773828375545, 120);
+        dnft.getBets(0);
+    }
+    function testPlaceScore() public {
+        dnft.createRaffle(25 ether, 60); 
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 1
+        vm.prank(alice);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 2
+
+        dnft.createBet(3773828375545, 120); // 120 seconds later
+        vm.prank(PLAYER);
+        dnft.placeBet(0,1,true); //We bet that the BTC will get this price in 120s
+        vm.prank(alice);
+        dnft.placeBet(0,2,false); 
+
+        dnft.getBets(0);
+        assertEq(true,dnft.getParticipantBet(0,1));
+        assertEq(false,dnft.getParticipantBet(0,2));
+    }
+    function testUpdateBetScore() public {
+        dnft.createRaffle(25 ether, 60); 
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 1
+        vm.prank(alice);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 2
+
+        dnft.createBet(3773828375545, 120);
+        vm.prank(PLAYER);
+        dnft.placeBet(0,1,true); //We bet that the BTC will get this price in 120 s
+        vm.prank(alice);
+        dnft.placeBet(0,2,false); 
+
+        vm.warp(block.timestamp + 121); // BetId = 0
+        dnft.updateBetScore(0);
+        assertEq(2, dnft.getTokenScoreByRaffle(0,1)); // TokenId1 = 2 because the price is higher than the bet (the price set is 3873828375545)
+        assertEq(1, dnft.getTokenScoreByRaffle(0,2));
+
+        //NOTHING CHANGE I JUST CREATE A BET
+        dnft.createBet(3973828375545, 120); // > 3873828375545 (The price set in dNFT)  // BetId = 1
+        vm.warp(block.timestamp + 121);
+        dnft.updateBetScore(1);
+        assertEq(2, dnft.getTokenScoreByRaffle(0,1)); // TokenId1 = 2 
+        assertEq(1, dnft.getTokenScoreByRaffle(0,2)); // TokenId2 = 1 
+
+        //Create a new bet and enter again
+        dnft.createBet(3973828375545, 120); // > 3873828375545 (The price set in dNFT)  // BetId = 2
+        vm.prank(PLAYER);
+        dnft.placeBet(2,1,true); //We bet that the BTC will get 3973828375545 in 120 s (And it will not occur)
+        vm.prank(alice);
+        dnft.placeBet(2,2,false); 
+        
+        vm.warp(block.timestamp + 121);
+        dnft.updateBetScore(2);
+        assertEq(2, dnft.getTokenScoreByRaffle(0,1)); // TokenId1 = 2 
+        assertEq(2, dnft.getTokenScoreByRaffle(0,2)); // TokenId2 = 2 
+    }
+
 
 }

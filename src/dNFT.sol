@@ -30,12 +30,17 @@ import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import "lib/openzeppelin-contracts/contracts/utils/Base64.sol";
 import "lib/openzeppelin-contracts/contracts/utils/Strings.sol";
 
-import {VRFCoordinatorV2Interface} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
-import {VRFConsumerBaseV2} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+import {VRFCoordinatorV2Interface} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol"; //VRF
+import {VRFConsumerBaseV2} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/VRFConsumerBaseV2.sol"; //VRF
+import {AggregatorV3Interface} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol"; //Data Feeds
 
 // import {console} from "forge-std/Script.sol"; 
 
 contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
+
+    // ================================================================
+    // |                          Errors                              |
+    // ================================================================
 
     error dNFT__NotEnoughETHSent();
     error dNFT__RaffleNotOpen();
@@ -48,29 +53,43 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     error dNFT__NoTokensInRaffle();
     error dNFT__UpkeepNotNeeded();
 
+    // ================================================================
+    // |                   Type declarations                          |
+    // ================================================================
+
     enum RaffleState { //When we calculating winner nobody can enter
         OPEN, //0
-        CALCULATING //1
+        CLOSE //1
     }
 
+    // ================================================================
+    // |                    STATE VARIABLES                           |
+    // ================================================================
+
+    // ImageURI
     string private constant s_bonus = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjAwIDIwMCIgd2lkdGg9IjQwMCIgIGhlaWdodD0iNDAwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijc4IiBmaWxsPSJyZ2IoMjMxLDIzMiwyMDkpIiAvPgo8L3N2Zz4gCg==";
     string private constant s_malus = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjAwIDIwMCIgd2lkdGg9IjQwMCIgIGhlaWdodD0iNDAwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijc4IiBmaWxsPSJyZ2IoMTg0LDgwLDY2KSIgLz4KPC9zdmc+IA==";
-    /**
-        @dev All the variables to manage the VRF:
-    */
+    
+    // Chainlink VRF Variables
     uint16 private constant REQUEST_CONFIRMATIONS = 3; // @dev Number of confirmations required to accept the VRF request
     uint32 private constant NUM_WORDS = 1; // @dev Number of random words to generate
     uint32 private constant CALL_BACK_GAS_LIMIT = 100000;
     uint32 private constant CALL_BACK_GAS_LIMIT_FUJI = 24900000;
-    VRFCoordinatorV2Interface private immutable i_vrfCoordinator;
+
+    VRFCoordinatorV2Interface private immutable i_vrfCoordinator; // @dev Chainlink VRF
     uint64 private immutable i_subscriptionId; // @dev Chainlink VRF SubscriptionId
     bytes32 private immutable keyHash = 0x474e34a077df58807dbe9c96d3c009b23b3c6d0cce433e59bbf5b34f823bc56c; //Gas fee we pay (DEPENDS ON THE NETWORK) (Here sepolia)
     bytes32 private immutable keyHashFUJI = 0x354d2f95da55398f44b7cff77da56283d9c6c829a4bdf1bbcaf2ad6a4d081f61; //Gas fee (Here fuji)
+    
+    // Chainlink Data Feeds Variables
+    AggregatorV3Interface internal dataFeed; // @dev Chainlink Data Feed
 
-    uint256 private immutable i_entranceFee;
+    //Contract variables
     uint256 private _nextTokenId;
     uint256 private _nextRaffleId;
     uint256 private closeRaffleId; //When pickWinner we know wich Raffle close
+    uint256 private _nextBetId;
+    
     mapping(uint256 => uint256) private s_buyNumberByTokenId; //Number of buy for each token
     mapping(uint256 => uint256) public prices; // Mapping from token ID to the desired selling price
     mapping(uint256 => uint256) private fundsByRaffleId; // Tracks funds for each raffle
@@ -82,7 +101,20 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     mapping(uint256 => uint256) private raffleLastTimeStamp; // (RaffleId => lastTimeStamp) Chainlink Automation
     mapping(uint256 => mapping(uint256 => uint256)) private tokenScoreByRaffle; // (RaffleId => (tokenId => score))  //I need RaffleId because this way I don't need to loop on tokenIdByRaffle to take the score
     mapping(uint256 => uint256) private totalScoreByRaffle; // (RaffleId => totalScore) 
+    mapping(uint256 => Bet) private bets; // _nextBetId => Bet1
 
+    struct Bet { // For Data Feeds
+        uint256 expectedPrice;
+        uint256 betTime;
+        uint256 settleTime;
+        uint256[] participantTokenIdList;
+        mapping(uint256 => bool) participantBets;  // TokenId => bool
+        RaffleState BetState;
+    }
+
+    // ================================================================
+    // |                          Events                              |
+    // ================================================================
 
     event EnteredRaffle(address indexed player, uint256 raffleNumber, uint256 tokenId);
     event UpdatePrice(uint256 _tokenId, uint256 _price);
@@ -92,6 +124,12 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     event RandomNum(uint256 randomNum);
     event CreatedRaffle(uint256 raffleId, uint256 entranceFee, uint256 interval);
     event UpdatedScore(uint256 raffleId, uint256 tokenId, uint256 score);
+    event CreatedBet(uint256 expectedPrice, uint256 settleTime);
+    event EnteredBet(address indexed player, uint256 BetId, uint256 tokenId, bool betChoice);
+
+    // ================================================================
+    // |                          Modifiers                           |
+    // ================================================================
 
     /** 
         * @dev Only the Owner of _tokenId must be the caller
@@ -102,12 +140,18 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         }
         _;
     }
-    constructor(address initialOwner, address vrfCoordinator, uint64 subscriptionId)
+
+    // ================================================================
+    // |                          Functions                           |
+    // ================================================================
+
+    constructor(address initialOwner, address vrfCoordinator, uint64 subscriptionId, address dataFeedAdress)
         ERC721("dNFT", "DFT")
         VRFConsumerBaseV2(vrfCoordinator)
         Ownable(initialOwner) {
         i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinator);
         i_subscriptionId = subscriptionId;    
+        dataFeed = AggregatorV3Interface(dataFeedAdress); 
     }
     function _mintNFT(address to) internal {
         uint256 tokenId = _nextTokenId++;
@@ -130,7 +174,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         if (RaffleNumber > _nextRaffleId-1) {
             revert dNFT__RaffleNotExist();
         }
-        if (msg.value < i_entranceFee) {
+        if (msg.value < raffleFee[RaffleNumber]) {
             revert dNFT__NotEnoughETHSent();
         }
         if (raffleStates[RaffleNumber] != RaffleState.OPEN) { 
@@ -147,9 +191,9 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         emit EnteredRaffle(msg.sender, RaffleNumber, tempTokenId);
     }
 
-    ///////////////////////////
-    // Buy / Transfer / Sell //
-    ///////////////////////////
+    // ================================================================
+    // |             Functions to Buy and Sell token                  |
+    // ================================================================
 
     /**
         * @dev We increase s_buyNumberByTokenId[tokenId] and check if it is equal to s_randomNumber
@@ -187,7 +231,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
             revert dNFT__NotEnoughFunds();
         }
         uint256 raffleId = RaffleByTokenId[_tokenId]; // Find the associated raffle
-        if (raffleStates[raffleId] == RaffleState.CALCULATING) {
+        if (raffleStates[raffleId] == RaffleState.CLOSE) {
             revert dNFT__RaffleNotOpen();
         }
         address seller = ownerOf(_tokenId);
@@ -208,9 +252,9 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
 
         IERC721(address(this)).transferFrom(seller, buyer, _tokenId); //To make the contract call the function
     }
-    ////////////////
-    //dNFT update//
-    ///////////////
+    // ================================================================
+    // |                        Update dNFT                           |
+    // ================================================================
     /**
      * @dev This is the function update the state of the NFT. It's call in the other functions (when Buying a NFT, when succeed a quest, ...)
      */
@@ -222,6 +266,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         tokenScoreByRaffle[raffleId][tokenId] += score; 
         totalScoreByRaffle[raffleId] += score;
     }
+    // ====================================BUYING PART==========================================
     /**
      * @dev When a player buy a NFT we update the score of the NFT (dNFT)
      */
@@ -231,12 +276,52 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
             updateScore(raffleId, tokenId, 1); // Increment the score by 1 for every 3 buys
         }
     }
-    ////////////////////////
-    //CHAINLINK automation//
-    ////////////////////////
+    // =====================================BET PART=============================================
+    /**
+     * @dev The Owner can create a bet on the price of BTC. And set the horizon time for the bet.
+     */
+    function createBet(uint256 _expectedPrice, uint256 _settleTime) external onlyOwner {
+        Bet storage newBet = bets[_nextBetId];
+        newBet.expectedPrice = _expectedPrice;
+        newBet.betTime = block.timestamp;
+        newBet.settleTime = block.timestamp + _settleTime;
+        newBet.BetState = RaffleState.OPEN;
+        _nextBetId++;
+        emit CreatedBet(_expectedPrice, _settleTime);
+    }
+    function placeBet(uint256 betId, uint256 tokenId, bool betChoice) external onlyTokenOwner(tokenId) {
+        require(bets[betId].BetState == RaffleState.OPEN, "Bet is not open.");
+        bets[betId].participantBets[tokenId] = betChoice;
+        bets[betId].participantTokenIdList.push(tokenId);
+        emit EnteredBet(msg.sender, betId, tokenId, betChoice);
+    }
+    function updateBetScore(uint256 betId) public { //Call by chainlink AUTOMATION (I do timebase for know but I need to do Custom Logic but already have one so...)
+        Bet storage bet = bets[betId];
+        require(bets[betId].BetState == RaffleState.OPEN, "Bet is not open.");
+        require(block.timestamp >= bet.settleTime, "Bet settle time has not been reached.");
+        bet.BetState = RaffleState.CLOSE; // Close the bet
+        int currentPrice = getChainlinkDataFeedLatestAnswer();
+        //int currentPrice = 3873828375545; // WHEN TESTING
+        bool result = uint256(currentPrice) >= bet.expectedPrice;
+
+        // Process the result for each participant
+        for (uint i = 0; i < bet.participantTokenIdList.length; i++) {
+            uint256 tokenId = bet.participantTokenIdList[i];
+            bool didWin = bet.participantBets[tokenId] == result;
+            if (didWin) {
+                updateScore(RaffleByTokenId[tokenId], tokenId, 1); // Increment the score by 1 if they won
+            }
+        }
+    }
+    // =======================================ENIGMA PART===========================================
+
+    // ================================================================
+    // |                   CHAINLINK AUTOMATION                       |
+    // ================================================================
+
     /**
      * @dev This is the function that the Chainlink Keeper nodes call
-     * they look for `upkeepNeeded` to return True.
+     * they look for `upkeepNeeded` to return True. (CUSTOM LOGIC)
     */
     function checkUpkeep(
         bytes memory /* checkData */
@@ -257,13 +342,13 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         if (!upkeepNeeded) {
             revert dNFT__UpkeepNotNeeded();
         }
-        raffleStates[closeRaffleId] = RaffleState.CALCULATING;
+        raffleStates[closeRaffleId] = RaffleState.CLOSE;
         /** GET THE FOLLOWING OFF WHEN TESTING (Until I did a config for anvil)*/
         i_vrfCoordinator.requestRandomWords( //On fait la requete pour avoir nombre random ! Après chainlink appel fulfillRandomWords
-            keyHashFUJI, 
+            keyHash, 
             i_subscriptionId,
             REQUEST_CONFIRMATIONS,
-            CALL_BACK_GAS_LIMIT_FUJI,
+            CALL_BACK_GAS_LIMIT,
             NUM_WORDS
         );
     }
@@ -271,9 +356,9 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     function testFulfillRandomWords(uint256 requestId, uint256[] memory randomWords) public { 
         fulfillRandomWords(requestId, randomWords);
     }
-    //////////////////
-    //CHAINLINK VRF//
-    /////////////////
+    // ================================================================
+    // |                        CHAINLINK VRF                         |
+    // ================================================================
     function fulfillRandomWords( //C'est la fonction que chainlink appel, elle donne en paramètre le nombre random que l'on veut !! Après on fait ce que l'on en veut !!!
         uint256 /*requestId*/,
         uint256[] memory randomWords
@@ -311,10 +396,22 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         }
         fundsByRaffleId[closeRaffleId] = 0;
     }
-
-    //////////////////
-    //Write METADATA//
-    //////////////////
+    // ================================================================
+    // |                   CHAINLINK DATA FEEDS                       |
+    // ================================================================
+    function getChainlinkDataFeedLatestAnswer() public view returns (int) {
+        (
+            /* uint80 roundID */,
+            int price,
+            /*uint startedAt*/,
+            /*uint timeStamp*/,
+            /*uint80 answeredInRound*/
+        ) = dataFeed.latestRoundData();
+        return price;
+    }
+    // ================================================================
+    // |                          METADATA                            |
+    // ================================================================
     function _baseURI() internal pure override returns (string memory) {
         return "data:application/json;base64,";
     }
@@ -381,5 +478,25 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     }
     function getTokenScoreByRaffle(uint256 raffleId, uint256 tokenId) public view returns (uint256) {
         return tokenScoreByRaffle[raffleId][tokenId];
+    }
+    struct ReturnBet { //I need that because I can't return a mapping
+        uint256 expectedPrice;
+        uint256 betTime;
+        uint256 settleTime;
+        uint256[] participantTokenIdList;
+        RaffleState BetState;
+    }
+    function getBets(uint256 betId) public view returns (ReturnBet memory) {
+        Bet storage bet = bets[betId];
+        return ReturnBet(
+            bet.expectedPrice,
+            bet.betTime,
+            bet.settleTime,
+            bet.participantTokenIdList,
+            bet.BetState
+        );
+    }
+    function getParticipantBet(uint256 betId, uint256 tokenId) public view returns (bool) { //To return the mapping of the struct
+        return bets[betId].participantBets[tokenId];
     }
 }
