@@ -229,15 +229,15 @@ contract TokenTest is Test {
         dnft.createRaffle(1 ether, 60);
         // Attempt to enter with less than the required ETH
         vm.prank(PLAYER);
+        dnft.enterRaffle{value: 0.8 ether}(0);
         vm.expectRevert(dNFT.dNFT__NotEnoughETHSent.selector);
-        dnft.enterRaffle{value: 0.5 ether}(0);
     }
     function testFailEnterClosedRaffle() public {
         dnft.createRaffle(1 ether, 60);
         // Attempt to enter a closed raffle
         vm.prank(PLAYER);
-        vm.expectRevert(dNFT.dNFT__RaffleNotOpen.selector);
         dnft.enterRaffle{value: 1 ether}(0);
+        vm.expectRevert(dNFT.dNFT__RaffleNotOpen.selector);
     }
     function testEmitEnterRaffle() public 
     {
@@ -277,7 +277,7 @@ contract TokenTest is Test {
     //////////////////////////////
     // PickWinner Release Funds //
     /////////////////////////////
-    function testPickWinner() public {  //§!!!!!!!!!!!!!!!!!!
+    function testPickWinner() public { 
         // Setup: Create and enter raffles
         uint256 interval = 60;
         dnft.createRaffle(50 ether, interval);
@@ -333,7 +333,7 @@ contract TokenTest is Test {
         vm.expectRevert(dNFT.dNFT__UpkeepNotNeeded.selector); //Because no tokens in raffle (timeHasPassed = false)
         dnft.performUpkeep("");
     }
-    function testCheckUpkeepWhenTheSecondRaffleIsGood() public { //§!!!!!!!!!!!!!!!!!!
+    function testCheckUpkeepWhenTheSecondRaffleIsGood() public { 
 
         dnft.createRaffle(25 ether, 120); //Raffle 0 (interval = 120)
         dnft.createRaffle(25 ether, 60); //Raffle 1 (interval = 60)

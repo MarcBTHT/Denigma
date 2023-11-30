@@ -67,9 +67,10 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     // ================================================================
 
     // ImageURI
-    string private constant s_bonus = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjAwIDIwMCIgd2lkdGg9IjQwMCIgIGhlaWdodD0iNDAwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijc4IiBmaWxsPSJyZ2IoMjMxLDIzMiwyMDkpIiAvPgo8L3N2Zz4gCg==";
-    string private constant s_malus = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjAwIDIwMCIgd2lkdGg9IjQwMCIgIGhlaWdodD0iNDAwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9Ijc4IiBmaWxsPSJyZ2IoMTg0LDgwLDY2KSIgLz4KPC9zdmc+IA==";
-    
+    string private constant s_diamond = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCiAgICA8cmVjdCB4PSIyMCIgeT0iMjAiIHdpZHRoPSIzNjAiIGhlaWdodD0iMTYwIiByeD0iMjAiIHJ5PSIyMCIgZmlsbD0iIzI5ODBCOSIgLz4NCiAgICA8cGF0aCBkPSJNIDYwLDIwIGE0MCw0MCAwIDAsMCAwLDE2MCIgZmlsbD0id2hpdGUiIC8+DQogICAgPHBhdGggZD0iTSAzNDAsMjAgYTQwLDQwIDAgMCwxIDAsMTYwIiBmaWxsPSJ3aGl0ZSIgLz4NCjwvc3ZnPg==";
+    string private constant s_gold = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxyZWN0IHg9IjIwIiB5PSIyMCIgd2lkdGg9IjM2MCIgaGVpZ2h0PSIxNjAiIHJ4PSIyMCIgcnk9IjIwIiBmaWxsPSJnb2xkIiAvPgogICAgPHBhdGggZD0iTSA2MCwyMCBhNDAsNDAgMCAwLDAgMCwxNjAiIGZpbGw9IndoaXRlIiAvPgogICAgPHBhdGggZD0iTSAzNDAsMjAgYTQwLDQwIDAgMCwxIDAsMTYwIiBmaWxsPSJ3aGl0ZSIgLz4KPC9zdmc+";
+    string private constant s_silver = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCiAgICA8cmVjdCB4PSIyMCIgeT0iMjAiIHdpZHRoPSIzNjAiIGhlaWdodD0iMTYwIiByeD0iMjAiIHJ5PSIyMCIgZmlsbD0ic2lsdmVyIiAvPg0KICAgIDxwYXRoIGQ9Ik0gNjAsMjAgYTQwLDQwIDAgMCwwIDAsMTYwIiBmaWxsPSJ3aGl0ZSIgLz4NCiAgICA8cGF0aCBkPSJNIDM0MCwyMCBhNDAsNDAgMCAwLDEgMCwxNjAiIGZpbGw9IndoaXRlIiAvPg0KPC9zdmc+";
+    string private constant s_bronze = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4NCiAgICA8cmVjdCB4PSIyMCIgeT0iMjAiIHdpZHRoPSIzNjAiIGhlaWdodD0iMTYwIiByeD0iMjAiIHJ5PSIyMCIgZmlsbD0iI0NEN0YzMiIgLz4NCiAgICA8cGF0aCBkPSJNIDYwLDIwIGE0MCw0MCAwIDAsMCAwLDE2MCIgZmlsbD0id2hpdGUiIC8+DQogICAgPHBhdGggZD0iTSAzNDAsMjAgYTQwLDQwIDAgMCwxIDAsMTYwIiBmaWxsPSJ3aGl0ZSIgLz4NCjwvc3ZnPg==";
     // Chainlink VRF Variables
     uint16 private constant REQUEST_CONFIRMATIONS = 3; // @dev Number of confirmations required to accept the VRF request
     uint32 private constant NUM_WORDS = 1; // @dev Number of random words to generate
@@ -422,11 +423,15 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         override(ERC721, ERC721URIStorage)
         returns (string memory)
     {
-        string memory imageURI = s_bonus;
+        string memory imageURI = s_bronze;
         uint256 tokenScore = tokenScoreByRaffle[RaffleByTokenId[tokenId]][tokenId];
 
-        if (tokenScore > 1) { // !!TEMPORARY!! Just to test for the moment 
-            imageURI = s_malus;
+        if (tokenScore > 5) {
+            imageURI = s_diamond;
+        } else if (tokenScore > 3) {
+            imageURI = s_gold;
+        } else if (tokenScore > 1) {
+            imageURI = s_silver;
         }
         return 
            string(

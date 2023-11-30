@@ -75,6 +75,7 @@ Our platform reinvents the lottery by creating a space where players' actions an
   	6) forge script script/DeployedNFT.s.sol --rpc-url $SEPOLIA_RPC_URL --private-key $SEPOLIA_PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
   	7) Create a subscription : https://vrf.chain.link/sepolia/ and add a consumer address (Contract address)
   	8) Create a new Upkeep : https://automation.chain.link/sepolia/ and use Custom logic
+    9) Create a new Upkeep with Time-based to call updateBetScore(0)
 
 **b) Run the site :**
 - Yarn - Vite:
