@@ -1,0 +1,5 @@
+.token-details {
+    color: white; /**Choose a color that contrasts well with your images*/
+    padding: 90px; /** Add some padding
+    // Add other styles as needed, like background-color with some opacity, text-align, etc.*/
+}

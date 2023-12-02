@@ -12,7 +12,6 @@ function App() {
   const [price, setPrice] = useState('');
   const [fetchedPrice, setFetchedPrice] = useState('');
   const [ethAmount, setEthAmount] = useState('');
-  const [fetchedFunds, setFetchedFunds] = useState('');
 
   const handleTokenIdChange = (e) => {
     setTokenId(e.target.value);
@@ -40,22 +39,6 @@ function App() {
       }
     } else {
       setConnectionStatus('Please install MetaMask'); // Update button text
-    }
-  }
-  async function mintNFT() {
-    if (typeof window.ethereum !== "undefined") {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-      const contract = new ethers.Contract(contractAddress, abi, signer);
-  
-      try {
-        const transactionResponse = await contract.MintNFT(signer.getAddress());
-        await provider.waitForTransaction(transactionResponse.hash);
-        console.log(`NFT minted. Transaction hash: ${transactionResponse.hash}`);
-        console.log('TokenURI:', await contract.tokenURI(0));
-      } catch (error) {
-        console.error(error);
-      }
     }
   }
   async function setNFTPrice(tokenId, price) {
@@ -119,20 +102,7 @@ function App() {
       }
     }
   }
-  async function fetchFunds(tokenId) {
-    if (typeof window.ethereum !== "undefined") {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const contract = new ethers.Contract(contractAddress, abi, provider);
-  
-      try {
-        const funds = await contract.getFundsByTokenId(tokenId);
-        setFetchedFunds(ethers.utils.formatEther(funds));
-        console.log(`Funds for Token ID ${tokenId}: ${funds} Wei`);
-      } catch (error) {
-        console.error(error);
-      }
-    }
-  }
+
   useEffect(() => { //TO know when I have a winner. This is a listener, we wait to have the emit of Winner()
     // Event listener setup
     if (typeof window.ethereum !== "undefined") {
@@ -162,9 +132,6 @@ function App() {
         <button onClick={connect}>{connectionStatus}</button>
       </div>
       <div>
-        <button onClick={mintNFT}>Mint NFT</button>
-      </div>
-      <div>
         <input type="number" placeholder="Token ID" value={tokenId} onChange={handleTokenIdChange}/>
         <input type="text" placeholder="Price in ETH" value={price} onChange={handlePriceChange}/>
         <button onClick={handleSetNFTPrice}>Set Price</button>
@@ -182,11 +149,6 @@ function App() {
         <input type="number" placeholder="Token ID" value={tokenId} onChange={(e) => setTokenId(e.target.value)}/>
         <input type="text" placeholder="Amount in ETH" value={ethAmount} onChange={(e) => setEthAmount(e.target.value)}/>
         <button onClick={() => buyToken(tokenId, ethAmount)}>Buy Token</button>
-      </div>
-      <div>
-        <input type="number" placeholder="Token ID" value={tokenId} onChange={(e) => setTokenId(e.target.value)}/>
-        <button onClick={() => fetchFunds(tokenId)}>Fetch Funds</button>
-        {fetchedFunds && <p>Funds: {fetchedFunds} ETH</p>}
       </div>
       <div> 
         <Link to="/page1">Next Page</Link>
