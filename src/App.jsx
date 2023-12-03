@@ -102,7 +102,7 @@ function App() {
       }
     }
   }
-
+  
   useEffect(() => { //TO know when I have a winner. This is a listener, we wait to have the emit of Winner()
     // Event listener setup
     if (typeof window.ethereum !== "undefined") {

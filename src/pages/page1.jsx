@@ -32,6 +32,9 @@ function Page1() {
     const [tokenImage, setTokenImage] = useState(null);
     const [tokenName, setTokenName] = useState('');
 
+    const [betDetails, setBetDetails] = useState(null);
+
+
     async function connect() {
         if (typeof window.ethereum !== "undefined") {
           try {
@@ -69,9 +72,11 @@ function Page1() {
         try {
             const transactionResponse = await contract.enterRaffle(raffleNumber, { value: ethers.utils.parseEther(ethAmount) });
             await provider.waitForTransaction(transactionResponse.hash);
-            console.log(`Entered raffle number: ${raffleNumber} with ${ethAmount} ETH`);
-        } catch (error) {
-            console.error(error);
+                const playerAddress = await signer.getAddress();
+                console.log('#########################');
+                console.log(`Player with address ${playerAddress} entered raffle number: ${raffleNumber} with ${ethAmount} ETH`);
+            } catch (error) {
+                console.error(error);
         }
     }
   }
@@ -123,7 +128,9 @@ function Page1() {
     try {
         const tx = await contract.createBet(ethers.utils.parseEther(expectedPrice), settleTime);
         await tx.wait();
-        console.log('Bet created successfully');
+        const playerAddress = await signer.getAddress();
+        console.log('#########################');
+        console.log(`Bet created successfully by ${playerAddress} with an expectedPrice of ${expectedPrice} $ in ${settleTime} seconds`);
     } catch (error) {
         console.error('Error creating bet:', error);
     }
@@ -137,7 +144,9 @@ function Page1() {
     try {
         const tx = await contract.placeBet(betId, tokenId, betChoice);
         await tx.wait();
-        console.log('Entered bet successfully');
+        console.log(`#########################`);
+        console.log(`TokenId ${tokenId} entered bet ${betId} successfully and chose ${betChoice}`);
+        
     } catch (error) {
         console.error('Error entering bet:', error);
     }
@@ -186,8 +195,38 @@ function Page1() {
     width: '300px', // Set a width for your container
     // Add other styles as needed
   };
+  async function fetchBetDetails(betId, tokenId) {
+    if (typeof window.ethereum !== "undefined") {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const contract = new ethers.Contract(contractAddress, abi, provider);
 
+        try {
+            // Fetching the details of the bet using getBets function
+            const betDetails = await contract.getBets(betId);
+            const { expectedPrice, betTime, settleTime, participantTokenIdList, BetState } = betDetails;
 
+            // Converting returned values to appropriate formats if necessary
+            const formattedExpectedPrice = ethers.utils.formatUnits(expectedPrice, 'ether');
+            const formattedBetTime = new Date(betTime * 1000).toLocaleString();
+            const formattedSettleTime = new Date(settleTime * 1000).toLocaleString();
+            const formattedBetState = BetState.toString();
+
+            // Setting the state with the fetched bet details
+            setBetDetails({
+                expectedPrice: formattedExpectedPrice,
+                betTime: formattedBetTime,
+                settleTime: formattedSettleTime,
+                participantTokenIdList,
+                BetState: formattedBetState
+            });
+
+        } catch (error) {
+            console.error('Error fetching bet details:', error);
+        }
+    } else {
+        console.error('Ethereum object not found. Please install MetaMask.');
+    }
+  }
 
     return (
       <>
@@ -311,6 +350,31 @@ function Page1() {
             </div>
             </div>
         </div>
+         {/* UI for fetching bet details */}
+    <div>
+      <input 
+        type="number" 
+        placeholder="Bet ID" 
+        value={betId} 
+        onChange={(e) => setBetId(e.target.value)}
+      />
+      <input 
+        type="number" 
+        placeholder="Token ID" 
+        value={tokenId} 
+        onChange={(e) => setTokenId(e.target.value)}
+      />
+      <button onClick={() => fetchBetDetails(betId, tokenId)}>Fetch Bet Details</button>
+      {betDetails && (
+        <div>
+          <p>Expected Price: ${betDetails.expectedPrice} BTC</p>
+          <p>Bet Time: {betDetails.betTime}</p>
+          <p>Settle Time: {betDetails.settleTime}</p>
+          <p>Participant Token IDs: {betDetails.participantTokenIdList.join(', ')}</p>
+          <p>Bet State: {betDetails.BetState}</p>
+        </div>
+      )}
+      </div>
       <div>
           <Link to="/">Go back home</Link>
       </div>
