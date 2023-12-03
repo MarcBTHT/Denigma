@@ -59,7 +59,7 @@ Our platform reinvents the lottery by creating a space where players' actions an
 - **Socially Responsible**: Contributes to societal causes through thematic lotteries.
 
 ## Product 🛠️
-![image](https://github.com/MarcBTHT/Denigma/assets/116173196/47cc15b1-fd49-4054-a8fc-9f66940a5445)
+![image](https://github.com/MarcBTHT/Denigma/assets/116173196/e4cada7d-26d2-4563-a3c5-12c8dd3a5bf5)
 
 ## Getting Started 🚀
 
@@ -75,7 +75,12 @@ Our platform reinvents the lottery by creating a space where players' actions an
   	6) forge script script/DeployedNFT.s.sol --rpc-url $SEPOLIA_RPC_URL --private-key $SEPOLIA_PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
   	7) Create a subscription : https://vrf.chain.link/sepolia/ and add a consumer address (Contract address)
   	8) Create a new Upkeep : https://automation.chain.link/sepolia/ and use Custom logic
-    9) Create a new Upkeep with Time-based to call updateBetScore(0)
+  	9) Create a new Upkeep with Time-based to call updateBetScore(0)
+  	10) Setup CCIP :
+  	      1) Deploy Receiver Contract (dNFT) : 0x554472a2720e5e7d5d3c817529aba05eed5f82d8 (ROUTER FUJI)
+  	      2) Deploy Sender Contract : 0xD0daae2231E9CB96b94C8512223533293C3693Bf (ROUTER SEPOLIA), 0x779877A7B0D9E8603169DdbD7836e478b4624789 (LINK SEPOLIA) and write on it the receiver address.
+  	      3) Fund with link the Sender Contract
+  	      4) You can stack your token. Just verify 14767482510784806043 (Chain selector Fuji)
 
 **b) Run the site :**
 - Yarn - Vite:
