@@ -83,7 +83,7 @@ contract Sender is OwnerIsCreator {
         Client.EVM2AnyMessage memory evm2AnyMessage = Client.EVM2AnyMessage({
             receiver: abi.encode(receiver), // ABI-encoded receiver address
             data: abi.encode(text), // ABI-encoded string
-            tokenAmounts: tokenAmounts, //WHY I CAN'T DO THIS ! ONLY THIS WORKS : new Client.EVMTokenAmount[](0) ??? BUG HERE !!!
+            tokenAmounts: tokenAmounts, //WHY I CAN'T REPLACE by this. This: new Client.EVMTokenAmount[](0) ??? BUG HERE !!!
             extraArgs: Client._argsToBytes(
                 // Additional arguments, setting gas limit and non-strict sequencing mode
                 Client.EVMExtraArgsV1({gasLimit: 200_000, strict: false})

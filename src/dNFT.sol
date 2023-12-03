@@ -75,7 +75,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     uint16 private constant REQUEST_CONFIRMATIONS = 3; // @dev Number of confirmations required to accept the VRF request
     uint32 private constant NUM_WORDS = 1; // @dev Number of random words to generate
     uint32 private constant CALL_BACK_GAS_LIMIT = 100000;
-    uint32 private constant CALL_BACK_GAS_LIMIT_FUJI = 24900000;
+    uint32 private constant CALL_BACK_GAS_LIMIT_FUJI = 2490000;
 
     VRFCoordinatorV2Interface private immutable i_vrfCoordinator; // @dev Chainlink VRF
     uint64 private immutable i_subscriptionId; // @dev Chainlink VRF SubscriptionId
@@ -346,10 +346,10 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         raffleStates[closeRaffleId] = RaffleState.CLOSE;
         /** GET THE FOLLOWING OFF WHEN TESTING (Until I did a config for anvil)*/
         i_vrfCoordinator.requestRandomWords( //On fait la requete pour avoir nombre random ! Après chainlink appel fulfillRandomWords
-            keyHash, 
+            keyHashFUJI, 
             i_subscriptionId,
             REQUEST_CONFIRMATIONS,
-            CALL_BACK_GAS_LIMIT,
+            CALL_BACK_GAS_LIMIT_FUJI,
             NUM_WORDS
         );
     }
@@ -483,6 +483,9 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     }
     function getTokenScoreByRaffle(uint256 raffleId, uint256 tokenId) public view returns (uint256) {
         return tokenScoreByRaffle[raffleId][tokenId];
+    }
+    function getRaffleState(uint256 raffleId) external view returns (RaffleState) {
+        return raffleStates[raffleId];
     }
     struct ReturnBet { //I need that because I can't return a mapping
         uint256 expectedPrice;

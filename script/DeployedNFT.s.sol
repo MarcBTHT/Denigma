@@ -20,7 +20,7 @@ contract DeployedNFT is Script {
 
     function run() external returns (dNFT) {
         vm.startBroadcast();
-        dNFT dnft = new dNFT(mySepoliaAddress,vrfCoordinator,subscriptionId,dataFeedAdress); 
+        dNFT dnft = new dNFT(mySepoliaAddress,vrfCoordinatorFUJI,subscriptionIdFUJI,dataFeedAdressFUJI); 
         vm.stopBroadcast();
         return dnft;
     }
