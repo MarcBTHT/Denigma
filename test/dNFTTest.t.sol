@@ -535,6 +535,23 @@ contract TokenTest is Test {
         assertEq(2, dnft.getTokenScoreByRaffle(0,1)); // TokenId1 = 2 
         assertEq(2, dnft.getTokenScoreByRaffle(0,2)); // TokenId2 = 2 
     }
+    /////////////
+    // Enigma //
+    ////////////
+    function testUpdateEnigmaScore() public {
+        dnft.createRaffle(25 ether, 60); 
+        vm.prank(PLAYER);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 1
+        vm.prank(alice);
+        dnft.enterRaffle{value: 25 ether}(0); // tokenId = 2
 
+        bool isCorrect1 = true;
+        bool isCorrect2 = false;
+        dnft.updateEnigmaScore(1,isCorrect1); // Update score tokenId 1 --> 1+4 = 5
+        vm.expectRevert(dNFT.dNFT__AnswerEnigmaIncorrect.selector); 
+        dnft.updateEnigmaScore(1,isCorrect2);
+        assertEq(5, dnft.getTokenScoreByRaffle(0,1));
+        assertEq(1, dnft.getTokenScoreByRaffle(0,2));
+    }
 
 }

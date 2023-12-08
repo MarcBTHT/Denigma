@@ -52,6 +52,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     error dNFT__RaffleNotExist();
     error dNFT__NoTokensInRaffle();
     error dNFT__UpkeepNotNeeded();
+    error dNFT__AnswerEnigmaIncorrect();
 
     // ================================================================
     // |                   Type declarations                          |
@@ -94,7 +95,7 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
     mapping(uint256 => uint256) private s_buyNumberByTokenId; //Number of buy for each token
     mapping(uint256 => uint256) public prices; // Mapping from token ID to the desired selling price
     mapping(uint256 => uint256) private fundsByRaffleId; // Tracks funds for each raffle
-    mapping(uint256 => uint256) private RaffleByTokenId; // TokenId => raffle ID (For the Buy function)
+    mapping(uint256 => uint256) private RaffleByTokenId; // TokenId => raffle ID
     mapping(uint256 => uint256) private raffleFee; // raffle1 => fee1
     mapping(uint256 => uint256[]) private tokenIdByRaffle; //(RAFFLE1 => [TOKENID1,2,4,9...])
     mapping(uint256 => RaffleState) private raffleStates; // (Raffleid => raffleState)
@@ -315,6 +316,20 @@ contract dNFT is ERC721, ERC721URIStorage, VRFConsumerBaseV2, Ownable {
         }
     }
     // =======================================ENIGMA PART===========================================
+    /**
+    * @dev Updates the score for a token based on the outcome of an enigma.
+    * @param isCorrect Indicates whether the enigma's answer is correct.
+    */
+    function updateEnigmaScore(uint256 tokenId, bool isCorrect) public { //Public for the moment but of course we need to only allow the Functions Consumer to do that. 
+        if (!isCorrect) {
+            revert dNFT__AnswerEnigmaIncorrect();
+        }
+        uint256 raffleId = RaffleByTokenId[tokenId];
+        if (raffleStates[raffleId] != RaffleState.OPEN) {
+            revert dNFT__RaffleNotOpen();
+        }
+        updateScore(raffleId, tokenId, 4); // Score : Need to change to be the most fair possible (Will depend on the difficulty of the enigma)
+    }
 
     // ================================================================
     // |                   CHAINLINK AUTOMATION                       |
