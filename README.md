@@ -4,13 +4,13 @@
 "Unleash Your Potential: Engage, Collaborate, Succeed!" Step into our innovative blockchain experience! Our platform combines the thrill of interactive gameplay, the power of community engagement, and the charm of personal storytelling within a dynamic digital environment.
 
 ## Table of Contents 📑
-- [Problem Statement](#problem-statement)
-- [Solution](#solution)
-- [Features](#features)
-- [Community Focus](#community-focus)
-- [Advantages](#advantages)
-- [Product](#product)
-- [Getting Started](#getting-started)
+- [Problem Statement](#problem-statement-)
+- [Solution](#solution-)
+- [Features](#features-)
+- [Community Focus](#community-focus-)
+- [Advantages](#advantages-)
+- [Product](#product-)
+- [Getting Started](#getting-started-)
 
 ## Problem Statement ⚠️
 Traditional digital experiences often lack interactive, educational, and secure elements. Users typically engage in passive activities with limited control, meaningful interaction, or assurance of fairness and security. 
@@ -38,7 +38,7 @@ We're redefining the digital experience, creating a space where user actions and
 ## Product 🛠️
 
 ### Diagram:
-![image](https://github.com/MarcBTHT/Denigma/assets/116173196/e4cada7d-26d2-4563-a3c5-12c8dd3a5bf5)
+![image](https://github.com/MarcBTHT/Denigma/assets/116173196/cdece12e-6e44-41c6-9472-1df3d2ef82a8)
 
 ### WebSite:
 - [**Denigma Site Repository**](https://github.com/MarcBTHT/Denigma-site) on GitHub for source code and more.
